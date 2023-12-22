@@ -1,6 +1,7 @@
 .env
 .git/
 .vscode/
+.DS_Store/
 package/
 venv/
 test.py
