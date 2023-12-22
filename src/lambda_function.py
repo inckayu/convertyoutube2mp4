@@ -79,28 +79,28 @@ def start_modal_interaction(body: dict, client: WebClient):
     client.views_open(
         trigger_id=body["trigger_id"],
         view={
-                "type": "modal",
-                "callback_id": "submit",
-                "submit": {"type": "plain_text", "text": "変換", "emoji": True},
-                "close": {"type": "plain_text", "text": "キャンセル", "emoji": True},
-                "title": {"type": "plain_text", "text": "YouTubeの動画をmp4に変換する", "emoji": True},
-                "blocks": [
-                    {
-                        "type": "section",
-                        "text": {
-                            "type": "plain_text",
-                            "text": "変換したいYouTubeのURLを入力するモル:bangbang:\n複数のURLを入力したい場合は間にカンマ(,)を入れるモル:bangbang:カンマは半角モル。カンマの前後にスペースを入れちゃダメモル:tired_face:\n動画のURLをたくさん入力すると容量が大きすぎて変換できないことがあるモルから、入力したURLの動画の合計再生時間が最大でも30分くらいになるようにしてほしいモル:bangbang:",
-                            "emoji": True,
-                        },
+            "type": "modal",
+            "callback_id": "submit",
+            "submit": {"type": "plain_text", "text": "変換", "emoji": True},
+            "close": {"type": "plain_text", "text": "キャンセル", "emoji": True},
+            "title": {"type": "plain_text", "text": "YouTubeの動画をmp4に変換する", "emoji": True},
+            "blocks": [
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "plain_text",
+                        "text": "変換したいYouTubeのURLを入力するモル:bangbang:\n複数のURLを入力したい場合は間にカンマ(,)を入れるモル:bangbang:カンマは半角モル。カンマの前後にスペースを入れちゃダメモル:tired_face:\n動画のURLをたくさん入力すると容量が大きすぎて変換できないことがあるモルから、入力したURLの動画の合計再生時間が最大でも30分くらいになるようにしてほしいモル:bangbang:",
+                        "emoji": True,
                     },
-                    {"type": "divider"},
-                    {
-                        "type": "input",
-                        "label": {"type": "plain_text", "text": "URL", "emoji": True},
-                        "element": {"type": "plain_text_input", "multiline": True},
-                    },
-                ],
-            }
+                },
+                {"type": "divider"},
+                {
+                    "type": "input",
+                    "label": {"type": "plain_text", "text": "URL", "emoji": True},
+                    "element": {"type": "plain_text_input", "multiline": True},
+                },
+            ],
+        }
     )
 
 def handle_modal(ack: Ack):
@@ -135,7 +135,26 @@ def handle_time_consuming_task(logger: logging.Logger, view: dict, client: WebCl
     # user = slack_event["user"]["id"]
     urls = [url.replace(" ", "") for url in urls]
     links = []
-    results, names = convert_to_mp3(urls)
+    try:
+        results, names = convert_to_mp3(urls)
+    except Exception as e:
+        client.views_update(
+            view_id=view.get("id"),
+            view={
+                "type": "modal",
+                "callback_id": "convert2mp3",
+                "title": {"type": "plain_text", "text": "YouTubeの動画をmp4に変換する"},
+                "close": {"type": "plain_text", "text": "閉じる"},
+                "blocks": [
+                    {
+                        "type": "section",
+                        "text": {"type": "mrkdwn", "text": f"変換中にエラーが発生したモル:tired_face:もう一度やり直してほしいモル。\n\n{e}"},
+                    }
+                ],
+            },
+        )
+        return
+
     for index, name in enumerate(names):
         links.append(f"<{results[index]}|{name}>")
     logger.info(urls)
