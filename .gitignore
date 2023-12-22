@@ -1,0 +1,6 @@
+.env
+.git/
+.vscode/
+package/
+venv/
+test.py
