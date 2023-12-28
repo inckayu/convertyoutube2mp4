@@ -17,6 +17,7 @@ from utils.slack import (
 app = App(token=constants.SLACK_TOKEN, signing_secret=constants.SLACK_SIGNING_SECRET, process_before_response=True,)
 
 logger = logging.getLogger()
+# logger.setLevel(logging.DEBUG)
 logger.setLevel(logging.INFO)
 
 def extract_youtube_url(text):
@@ -44,11 +45,20 @@ def upload_to_s3(file_name, bucket_name, s3_file_name=None):
         logger.info(f"Error: {e}")
         print(e)
 
-def convert_to_mp3(urls):
+def convert_to_mp3(urls, fmt):
     logger.info(f"convert to mp3: {urls}")
     output_urls = []
     output_names = []
     ydl_opts = {
+        # 'format': 'mp4',
+        'outtmpl': '/tmp/%(title)s.%(ext)s',
+        'format': 'mp3/bestaudio/best',
+        'postprocessors': [{  # Extract audio using ffmpeg
+            'key': 'FFmpegExtractAudio',
+            'preferredcodec': 'mp3',
+        }],
+        'ffmpeg-location': 'opt/bin/ffmpeg',
+    } if fmt == "mp3" else {
         'format': 'mp4',
         'outtmpl': '/tmp/%(title)s.%(ext)s',
     }
@@ -89,9 +99,40 @@ def start_modal_interaction(body: dict, client: WebClient):
                     "type": "section",
                     "text": {
                         "type": "plain_text",
-                        "text": "変換したいYouTubeのURLを入力するモル:bangbang:\n複数のURLを入力したい場合は間にカンマ(,)を入れるモル:bangbang:カンマは半角モル。カンマの前後にスペースを入れちゃダメモル:tired_face:\n動画のURLをたくさん入力すると容量が大きすぎて変換できないことがあるモルから、入力したURLの動画の合計再生時間が最大でも30分くらいになるようにしてほしいモル:bangbang:",
+                        "text": "今はmp4にしか変換できないモル:tired_face:",
+                        # "text": "変換したいYouTubeのURLを入力するモル:bangbang:\n複数のURLを入力したい場合は間にカンマ(,)を入れるモル:bangbang:カンマは半角モル。カンマの前後にスペースを入れちゃダメモル:tired_face:\n動画のURLをたくさん入力すると容量が大きすぎて変換できないことがあるモルから、入力したURLの動画の合計再生時間が最大でも30分くらいになるようにしてほしいモル:bangbang:",
                         "emoji": True,
                     },
+                },
+                {"type": "divider"},
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": "*フォーマット*"
+                    },
+                    "accessory": {
+                        "type": "radio_buttons",
+                        "options": [
+                            {
+                                "text": {
+                                    "type": "plain_text",
+                                    "text": "mp3",
+                                    "emoji": True
+                                },
+                                "value": "mp3"
+                            },
+                            {
+                                "text": {
+                                    "type": "plain_text",
+                                    "text": "mp4",
+                                    "emoji": True
+                                },
+                                "value": "mp4"
+                            },
+                        ],
+                        "action_id": "radio_buttons-action"
+                    }
                 },
                 {"type": "divider"},
                 {
@@ -127,16 +168,21 @@ def handle_modal(ack: Ack):
 
 # モーダルで送信ボタンが押されたときに非同期で実行される処理
 # モーダルの操作以外で時間のかかる処理があればこちらに書く
-def handle_time_consuming_task(logger: logging.Logger, view: dict, client: WebClient):
-    logger.info(view)
-    urls = list(list(view["state"]["values"].values())[0].values())[0][
+def handle_time_consuming_task(view: dict, client: WebClient, logger: logging.Logger):
+    logger.setLevel(logging.INFO)
+    urls = list(list(view["state"]["values"].values())[1].values())[0][
         "value"
     ].split(",")
+    fmt = list(
+            view["state"]["values"].values()
+        )[0]["radio_buttons-action"]["selected_option"]["value"]
+    logger.info(f"FORMAT: {fmt}")
+    
     # user = slack_event["user"]["id"]
     urls = [url.replace(" ", "") for url in urls]
     links = []
     try:
-        results, names = convert_to_mp3(urls)
+        results, names = convert_to_mp3(urls, fmt)
     except Exception as e:
         client.views_update(
             view_id=view.get("id"),
@@ -178,6 +224,10 @@ def handle_time_consuming_task(logger: logging.Logger, view: dict, client: WebCl
         },
     )
 
+def handle_radio_buttons(logger: logging.Logger, view: dict, client: WebClient):
+    logger.info(f"radio buttons event: {view}")
+    logger.info(f"radio buttons event: {client}")
+
 # convert2mp3というcallback idに対応する処理を登録
 app.shortcut("convert2mp3")(
     ack=just_ack,
@@ -188,6 +238,11 @@ app.shortcut("convert2mp3")(
 app.view("submit")(
     ack=handle_modal,
     lazy=[handle_time_consuming_task],
+)
+
+app.action("radio_buttons-action")(
+    ack=just_ack,
+    lazy=[handle_radio_buttons],
 )
 
 slack_handler = SlackRequestHandler(app)
